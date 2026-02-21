@@ -1,12 +1,31 @@
+require('dotenv').config();
+
 const {
+  Client,
+  GatewayIntentBits,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType
-} = require("discord.js");
+} = require('discord.js');
 
-// TICKET PANEL KOMUTU
+// 👉 CLIENT BURADA TANIMLANIR
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+client.once('ready', () => {
+  console.log(`${client.user.tag} aktif!`);
+});
+
+// 🎫 TICKET PANEL KOMUTU
 client.on("messageCreate", async message => {
+  if (message.author.bot) return;
+
   if (message.content === "!ticketpanel") {
     const button = new ButtonBuilder()
       .setCustomId("ticket_ac")
@@ -22,7 +41,7 @@ client.on("messageCreate", async message => {
   }
 });
 
-// BUTON TIKLANINCA
+// 🎫 BUTON TIKLAMA
 client.on("interactionCreate", async interaction => {
   if (!interaction.isButton()) return;
 
@@ -31,11 +50,12 @@ client.on("interactionCreate", async interaction => {
       c => c.name === `ticket-${interaction.user.username}`
     );
 
-    if (existing)
+    if (existing) {
       return interaction.reply({
-        content: "Zaten açık bir ticketin var!",
+        content: "Zaten açık ticketin var!",
         ephemeral: true
       });
+    }
 
     const channel = await interaction.guild.channels.create({
       name: `ticket-${interaction.user.username}`,
@@ -51,8 +71,9 @@ client.on("interactionCreate", async interaction => {
       ephemeral: true
     });
 
-    channel.send(
-      `🎫 Hoş geldin ${interaction.user}, destek ekibi yakında seninle ilgilenecek.`
-    );
+    channel.send(`🎫 Hoş geldin ${interaction.user}`);
   }
 });
+
+// 👉 EN SONDA LOGIN OLUR
+client.login(process.env.TOKEN);
