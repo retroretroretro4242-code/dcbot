@@ -1,79 +1,135 @@
-require('dotenv').config();
-
+require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType
-} = require('discord.js');
+  ChannelType,
+  StringSelectMenuBuilder,
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  REST,
+  Routes
+} = require("discord.js");
 
-// 👉 CLIENT BURADA TANIMLANIR
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds]
 });
 
-client.once('ready', () => {
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID; // Bot ID
+const GUILD_ID = process.env.GUILD_ID;   // Sunucu ID
+
+// ================= SLASH KOMUT KAYIT =================
+const commands = [
+  new SlashCommandBuilder()
+    .setName("ticket")
+    .setDescription("Destek talebi oluşturur")
+].map(cmd => cmd.toJSON());
+
+const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+(async () => {
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
+  console.log("Slash komut yüklendi.");
+})();
+
+// ================= BOT READY =================
+client.once("ready", () => {
   console.log(`${client.user.tag} aktif!`);
 });
 
-// 🎫 TICKET PANEL KOMUTU
-client.on("messageCreate", async message => {
-  if (message.author.bot) return;
-
-  if (message.content === "!ticketpanel") {
-    const button = new ButtonBuilder()
-      .setCustomId("ticket_ac")
-      .setLabel("🎫 Ticket Aç")
-      .setStyle(ButtonStyle.Primary);
-
-    const row = new ActionRowBuilder().addComponents(button);
-
-    message.channel.send({
-      content: "Destek almak için butona bas:",
-      components: [row]
-    });
-  }
-});
-
-// 🎫 BUTON TIKLAMA
+// ================= INTERACTIONS =================
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isButton()) return;
 
-  if (interaction.customId === "ticket_ac") {
-    const existing = interaction.guild.channels.cache.find(
-      c => c.name === `ticket-${interaction.user.username}`
-    );
+  // /ticket komutu
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "ticket") {
 
-    if (existing) {
-      return interaction.reply({
-        content: "Zaten açık ticketin var!",
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId("ticket_menu")
+        .setPlaceholder("Kategori seç")
+        .addOptions([
+          { label: "Başvuru", value: "basvuru" },
+          { label: "Yardım", value: "yardim" },
+          { label: "Şikayet", value: "sikayet" }
+        ]);
+
+      const row = new ActionRowBuilder().addComponents(menu);
+
+      await interaction.reply({
+        content: "Ticket kategorisi seç:",
+        components: [row],
         ephemeral: true
       });
     }
-
-    const channel = await interaction.guild.channels.create({
-      name: `ticket-${interaction.user.username}`,
-      type: ChannelType.GuildText,
-      permissionOverwrites: [
-        { id: interaction.guild.id, deny: ["ViewChannel"] },
-        { id: interaction.user.id, allow: ["ViewChannel"] }
-      ]
-    });
-
-    await interaction.reply({
-      content: `Ticket açıldı: ${channel}`,
-      ephemeral: true
-    });
-
-    channel.send(`🎫 Hoş geldin ${interaction.user}`);
   }
+
+  // Menü seçimi
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === "ticket_menu") {
+
+      const kategori = interaction.values[0];
+      const isim = `${kategori}-${interaction.user.username}`;
+
+      const mevcut = interaction.guild.channels.cache.find(c => c.name === isim);
+      if (mevcut) {
+        return interaction.reply({
+          content: "Zaten açık ticketin var!",
+          ephemeral: true
+        });
+      }
+
+      const channel = await interaction.guild.channels.create({
+        name: isim,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          { id: interaction.guild.id, deny: ["ViewChannel"] },
+          { id: interaction.user.id, allow: ["ViewChannel", "SendMessages"] }
+        ]
+      });
+
+      const kapatBtn = new ButtonBuilder()
+        .setCustomId("ticket_kapat")
+        .setLabel("🔒 Ticket Kapat")
+        .setStyle(ButtonStyle.Danger);
+
+      const row = new ActionRowBuilder().addComponents(kapatBtn);
+
+      await channel.send({
+        content: `🎫 Ticket açıldı (${kategori})\n${interaction.user}`,
+        components: [row]
+      });
+
+      await interaction.reply({
+        content: `Ticket oluşturuldu: ${channel}`,
+        ephemeral: true
+      });
+    }
+  }
+
+  // Ticket kapatma
+  if (interaction.isButton()) {
+    if (interaction.customId === "ticket_kapat") {
+
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({
+          content: "Bunu sadece yetkililer kapatabilir.",
+          ephemeral: true
+        });
+      }
+
+      await interaction.reply("Ticket 5 saniye içinde kapanacak...");
+      setTimeout(() => {
+        interaction.channel.delete().catch(() => {});
+      }, 5000);
+    }
+  }
+
 });
 
-// 👉 EN SONDA LOGIN OLUR
-client.login(process.env.TOKEN);
+client.login(TOKEN);
